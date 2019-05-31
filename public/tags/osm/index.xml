@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Osm on Le pays au loin</title>
+    <link>/tags/osm/</link>
+    <description>Recent content in Osm on Le pays au loin</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <language>fr-fr</language>
+    <lastBuildDate>Fri, 31 May 2019 00:00:00 +0000</lastBuildDate>
+    
+	<atom:link href="/tags/osm/index.xml" rel="self" type="application/rss+xml" />
+    
+    
+    <item>
+      <title>Suivi des Routes Haïtiennes avec l’utilisation de R et OpenStreetMap </title>
+      <link>/2019/05/31/suivi-des-routes-ha%C3%AFtiennes-avec-l-utilisation-de-r-et-openstreetmap/</link>
+      <pubDate>Fri, 31 May 2019 00:00:00 +0000</pubDate>
+      
+      <guid>/2019/05/31/suivi-des-routes-ha%C3%AFtiennes-avec-l-utilisation-de-r-et-openstreetmap/</guid>
+      <description>chargement des paquetages nécessaires library(osmdata) library(&amp;quot;sf&amp;quot;) library(&amp;quot;units&amp;quot;) library(&amp;quot;dplyr&amp;quot;) library(&amp;quot;tidyverse&amp;quot;) library(&amp;quot;tidyr&amp;quot;) library(&amp;quot;stringr&amp;quot;) #library(cartography) #library(&amp;quot;DT&amp;quot;) library(&amp;quot;formattable&amp;quot;)  routes nationales #définition des bornes q0 &amp;lt;- opq(bbox = c(-75.04211,17.34015 , -71.59241, 20.42186)) #extraction des relations nat &amp;lt;- add_osm_feature(opq = q0, key = &amp;quot;network&amp;quot;, value = &amp;quot;HT:RN-road&amp;quot;) #transformation requete en sf res1 &amp;lt;- osmdata_sf(nat) # prise en compte géométrie relations routes route &amp;lt;- st_geometry(res1$osm_multilines) #utiliser SCR utm 18n Haïti route &amp;lt;- st_transform(route, 32618) #calculer longueur chaque route res1$osm_multilines$longueurOsm &amp;lt;- st_length(res1$osm_multilines)/1000 #sélection des colonnes à garder ref et longueur osm &amp;lt;- res1$osm_multilines[,c(7,11)] osm &amp;lt;- distinct(osm, ref, .</description>
+    </item>
+    
+  </channel>
+</rss>

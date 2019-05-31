@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="fr-fr">
+  <head>
+    <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.54.0" />
+
+
+<title>Suivi des Routes Haïtiennes avec l’utilisation de R et OpenStreetMap  - Le pays au loin</title>
+<meta property="og:title" content="Suivi des Routes Haïtiennes avec l’utilisation de R et OpenStreetMap  - Le pays au loin">
+
+
+  <link href='/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/github.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="/css/fonts.css" media="all">
+<link rel="stylesheet" href="/css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="/" class="nav-logo">
+    <img src="/images/logo.png"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="/about/">About</a></li>
+    
+    <li><a href="https://github.com/rstudio/blogdown">GitHub</a></li>
+    
+    <li><a href="https://twitter.com/rstudio">Twitter</a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">5 min read</span>
+    
+
+    <h1 class="article-title">Suivi des Routes Haïtiennes avec l’utilisation de R et OpenStreetMap </h1>
+
+    
+    <span class="article-date">2019-05-31</span>
+    
+
+    <div class="article-content">
+      
+
+
+<div id="chargement-des-paquetages-necessaires" class="section level1">
+<h1>chargement des paquetages nécessaires</h1>
+<pre class="r"><code>library(osmdata)
+library(&quot;sf&quot;)
+library(&quot;units&quot;)
+library(&quot;dplyr&quot;)
+library(&quot;tidyverse&quot;)
+library(&quot;tidyr&quot;)
+library(&quot;stringr&quot;)
+#library(cartography)
+#library(&quot;DT&quot;)
+library(&quot;formattable&quot;)</code></pre>
+</div>
+<div id="routes-nationales" class="section level1">
+<h1>routes nationales</h1>
+<pre class="r"><code>#définition des bornes 
+q0 &lt;- opq(bbox = c(-75.04211,17.34015 , -71.59241, 20.42186))
+#extraction des relations 
+nat &lt;- add_osm_feature(opq = q0, key = &quot;network&quot;, value = &quot;HT:RN-road&quot;)
+#transformation requete en sf
+res1 &lt;- osmdata_sf(nat)
+# prise en compte géométrie relations routes
+route &lt;- st_geometry(res1$osm_multilines)
+#utiliser SCR utm 18n Haïti
+route &lt;- st_transform(route, 32618)
+#calculer longueur chaque route
+res1$osm_multilines$longueurOsm &lt;- st_length(res1$osm_multilines)/1000
+#sélection des colonnes à garder ref et longueur
+osm &lt;- res1$osm_multilines[,c(7,11)]
+osm &lt;- distinct(osm, ref, .keep_all = TRUE)
+
+
+#charger shp routes ministere
+mtptc &lt;- read_sf(&quot;~/Documents/haiti_administratif/transport/reseau_routier_haiti/reseau_routier_haiti.shp&quot;,  quiet = TRUE, stringsAsFactors = FALSE)
+# sélectionner uniquement routes départementales
+mtptc &lt;- mtptc[mtptc$COD1_TYP == &quot;RN&quot;,]
+# dissoudre en fonction ref de routes
+mtptc &lt;- mtptc %&gt;% group_by(mtptc$CODE_MTPTC) %&gt;% summarize()
+#calcul longueur
+mtptc$longueurM &lt;- st_length(mtptc)/1000
+# passage en data.frame pour permettre fusion 2 tableaux
+mtptc &lt;- as.data.frame(mtptc)
+#on retire la colonne géométrie
+mtptc &lt;- mtptc[,-c(2)]
+#calcul nombre caractères réf dans osm pour choisir comment les concaténer
+osm$nbc &lt;- str_length(osm$ref)
+# concaténation des ref dans osm pour que cela corresponde à celles du ministère
+osm$ref &lt;- ifelse(osm$nbc == 4, paste(c(str_sub(osm$ref,1,2)),(str_sub(osm$ref, -1)), sep  = &quot;&quot;),
+                  paste(c(str_sub(osm$ref,1,2)),(str_sub(osm$ref, -2,-1)), sep  = &quot;&quot;))
+                  
+
+
+#fusion tableau mtptc et osm par les références des routes
+compar &lt;- full_join(mtptc, osm, by = c(&quot;mtptc$CODE_MTPTC&quot; = &quot;ref&quot;))
+#activation des variables en entrée directe
+attach(compar)
+# arrondi longueur à 2 décimales 
+compar$longueurM &lt;- round(compar$longueurM, digits = 2)
+compar$longueurOsm &lt;- round(compar$longueurOsm, digits = 2)
+#calcul de la différence entre distance Ministère et OSM
+compar$diffL &lt;- longueurM - longueurOsm
+compar$diffL &lt;- round(compar$diffL, digits = 2)
+#ajout colonne pourcentage finition dans osm par rapport Ministère
+compar$pourdiff &lt;- longueurOsm *100/ longueurM
+#arrondi à deux décimales
+compar$pourdiff&lt;-  round(compar$pourdiff, digits = 2)
+#renommer colonne
+#compar$ref &lt;- colnames(compar$`mtptc$CODE_MTPTC`)  
+
+#retire colonne géométrie et nbc
+compar &lt;- compar[,-c(4,5)]
+#compar &lt;- compar[-c(36,37),]
+#changement des noms des colonnes
+names(compar) &lt;- c(&quot;Réf&quot;, &quot;LongeurMinis en km&quot;, &quot;LongueurOSM en km&quot;, &quot;Différence en km&quot;, &quot;Complétude en %&quot;)
+
+#affichage du résultat dans un tableau
+formattable(compar, list(
+  &quot;Différence en km&quot; = color_tile(&quot;green&quot;, &quot;red&quot;),
+  area(col = c(&quot;Complétude en %&quot;)) ~ proportion_bar(&quot;pink&quot;, 0.2)
+))</code></pre>
+</div>
+<div id="routes-departementales" class="section level1">
+<h1>routes départementales</h1>
+<pre class="r"><code>#définition des bornes 
+q0 &lt;- opq(bbox = c(-75.04211,17.34015 , -71.59241, 20.42186))
+#extraction des relations 
+dep &lt;- add_osm_feature(opq = q0, key = &quot;network&quot;, value = &quot;HT:RD-road&quot;)
+#transformation requete en sf
+res1 &lt;- osmdata_sf(dep)
+# prise en compte géométrie relations routes
+route &lt;- st_geometry(res1$osm_multilines)
+#utiliser SCR utm 18n Haïti
+route &lt;- st_transform(route, 32618)
+#calculer longueur chaque route
+res1$osm_multilines$longueurOsm &lt;- st_length(res1$osm_multilines)/1000
+#sélection des colonnes à garder ref et longueur
+osm &lt;- res1$osm_multilines[,c(7,12)]
+
+
+#charger shp routes ministere
+mtptc &lt;- read_sf(&quot;~/Documents/haiti_administratif/transport/reseau_routier_haiti/reseau_routier_haiti.shp&quot;,  quiet = TRUE, stringsAsFactors = FALSE)
+# sélectionner uniquement routes départementales
+mtptc &lt;- mtptc[mtptc$COD1_TYP == &quot;RD&quot;,]
+# dissoudre en fonction ref de routes
+mtptc &lt;- mtptc %&gt;% group_by(mtptc$CODE_MTPTC) %&gt;% summarize()
+#calcul longueur
+mtptc$longueurM &lt;- st_length(mtptc)/1000
+# passage en data.frame pour permettre fusion 2 tableaux
+mtptc &lt;- as.data.frame(mtptc)
+#on retire la colonne géométrie
+mtptc &lt;- mtptc[,-c(2)]
+#calcul nombre caractères réf dans osm pour choisir comment les concaténer
+osm$nbc &lt;- str_length(osm$ref)
+# concaténation des ref dans osm pour que cela corresponde à celles du ministère
+osm$ref &lt;- ifelse(osm$nbc == 5, paste(c(str_sub(osm$ref,1,2)),(str_sub(osm$ref, -2,-1)), sep  = &quot;&quot;),
+          ifelse(osm$nbc == 6, paste(c(str_sub(osm$ref,1,2)),(str_sub(osm$ref, -3,-1)), sep  = &quot;&quot;),
+          paste(c(str_sub(osm$ref,1,2)),(str_sub(osm$ref, -4,-1)), sep  = &quot;&quot;))
+                   )
+
+#fusion tableau mtptc et osm par les références des routes
+compar &lt;- full_join(mtptc, osm, by = c(&quot;mtptc$CODE_MTPTC&quot; = &quot;ref&quot;))
+#activation des variables en entrée directe
+attach(compar)
+# arrondi longueur à 2 décimales 
+compar$longueurM &lt;- round(compar$longueurM, digits = 2)
+compar$longueurOsm &lt;- round(compar$longueurOsm, digits = 2)
+#calcul de la différence entre distance Ministère et OSM
+compar$diffL &lt;- longueurM - longueurOsm
+compar$diffL &lt;- round(compar$diffL, digits = 2)
+#ajout colonne pourcentage finition dans osm par rapport Ministère
+compar$pourdiff &lt;- longueurOsm *100 / longueurM
+
+#arrondi à deux décimales
+compar$pourdiff&lt;-  round(compar$pourdiff, digits = 2)
+#renommer colonne
+#compar$ref &lt;- colnames(compar$`mtptc$CODE_MTPTC`)  
+
+#retire colonne géométrie et nbc
+compar &lt;- compar[,-c(4,5)]
+#compar &lt;- compar[-c(36,37),]
+#changement des noms des colonnes
+names(compar) &lt;- c(&quot;Réf&quot;, &quot;LongeurMinis en km&quot;, &quot;LongueurOSM en km&quot;, &quot;Différence en km&quot;, &quot;Complétude en %&quot;)
+
+#affichage du résultat dans un tableau
+formattable(compar, list(
+  &quot;Différence en km&quot; = color_tile(&quot;green&quot;, &quot;red&quot;),
+  area(col = c(&quot;Complétude en %&quot;)) ~ proportion_bar(&quot;pink&quot;, 0.2)
+))</code></pre>
+</div>
+<div id="routes-communales" class="section level1">
+<h1>routes communales</h1>
+<pre class="r"><code>#définition des bornes 
+q0 &lt;- opq(bbox = c(-75.04211,17.34015 , -71.59241, 20.42186))
+#extraction des relations 
+com &lt;- add_osm_feature(opq = q0, key = &quot;network&quot;, value = &quot;HT:RC-road&quot;)
+#transformation requete en sf
+res1 &lt;- osmdata_sf(com)
+# prise en compte géométrie relations routes
+route &lt;- st_geometry(res1$osm_multilines)
+#utiliser SCR utm 18n Haïti
+route &lt;- st_transform(route, 32618)
+#calculer longueur chaque route
+res1$osm_multilines$longueurOsm &lt;- st_length(res1$osm_multilines)/1000
+#sélection des colonnes à garder ref et longueur
+osm &lt;- res1$osm_multilines[,c(4,9)]
+#permet d’enlever les doubles
+#osm &lt;- distinct(osm, ref, .keep_all = TRUE)
+
+
+#charger shp routes ministere
+comtp &lt;- read_sf(&quot;~/Documents/haiti_administratif/transport/reseau_routier_haiti/reseau_routier_haiti.shp&quot;,  quiet = TRUE, stringsAsFactors = FALSE)
+# sélectionner uniquement routes départementales
+comtp &lt;- comtp[comtp$COD1_TYP == &quot;RC&quot;,]
+# dissoudre en fonction ref de routes
+comtp &lt;- comtp %&gt;% group_by(comtp$CODE_MTPTC) %&gt;% summarize()
+#calcul longueur
+comtp$longueurM &lt;- st_length(comtp)/1000
+# passage en data.frame pour permettre fusion 2 tableaux
+comtp &lt;- as.data.frame(comtp)
+#on retire la colonne géométrie
+comtp &lt;- comtp[,-c(2)]
+#calcul nombre caractères réf dans osm pour choisir comment les concaténer
+osm$nbc &lt;- str_length(osm$ref)
+# concaténation des ref dans osm pour que cela corresponde à celles du ministère
+osm$ref &lt;- ifelse(osm$nbc == 7, paste(c(str_sub(osm$ref,1,2)),(str_sub(osm$ref,-4, -1)), sep  = &quot;&quot;),
+                  paste(c(str_sub(osm$ref,1,2)),(str_sub(osm$ref, -2,-1)), sep  = &quot;&quot;))
+
+
+
+#fusion tableau comtp et osm par les références des routes
+commu &lt;- full_join(comtp, osm, by = c(&quot;comtp$CODE_MTPTC&quot; = &quot;ref&quot;))
+#activation des variables en entrée directe
+attach(commu)
+# arrondi longueur à 2 décimales 
+commu$longueurM &lt;- round(commu$longueurM, digits = 2)
+commu$longueurOsm &lt;- round(commu$longueurOsm, digits = 2)
+#calcul de la différence entre distance Ministère et OSM
+commu$diffL &lt;- longueurM - longueurOsm
+commu$diffL &lt;- round(commu$diffL, digits = 2)
+#ajout colonne pourcentage finition dans osm par rapport Ministère
+commu$pourdiff &lt;- longueurOsm *100/ longueurM
+#arrondi à deux décimales
+commu$pourdiff&lt;-  round(commu$pourdiff, digits = 2)
+#renommer colonne
+#commu$ref &lt;- colnames(commu$`mtptc$CODE_MTPTC`)  
+
+#retire colonne géométrie et nbc
+commu &lt;- commu[,-c(4,5)]
+#commu &lt;- commu[-c(36,37),]
+#changement des noms des colonnes
+names(commu) &lt;- c(&quot;Réf&quot;, &quot;LongeurMinis en km&quot;, &quot;LongueurOSM en km&quot;, &quot;Différence en km&quot;, &quot;Complétude en %&quot;)
+#15 premières références
+com15 &lt;- commu[1:23,]
+
+#affichage du résultat dans un tableau
+formattable(com15, list(
+  &quot;Différence en km&quot; = color_tile(&quot;green&quot;, &quot;red&quot;),
+  area(col = c(&quot;Complétude en %&quot;)) ~ proportion_bar(&quot;pink&quot;, 0.2)
+))
+#30 dernières références
+com30 &lt;- commu[24:47,]
+
+png &lt;- 
+#affichage du résultat dans un tableau
+formattable(com30, list(
+  &quot;Différence en km&quot; = color_tile(&quot;green&quot;, &quot;red&quot;),
+  area(col = c(&quot;Complétude en %&quot;)) ~ proportion_bar(&quot;pink&quot;, 0.2)
+))</code></pre>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="/index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="/images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/yaml.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="/js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+  </body>
+</html>
+
